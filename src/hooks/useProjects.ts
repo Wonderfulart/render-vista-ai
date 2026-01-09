@@ -108,13 +108,36 @@ export function useProjects() {
     projects: projectsQuery.data ?? [],
     isLoading: projectsQuery.isLoading,
     error: projectsQuery.error,
-    createProject: createProjectMutation.mutateAsync,
-    deleteProject: deleteProjectMutation.mutateAsync,
-    cloneProject: cloneProjectMutation.mutateAsync,
-    isCreating: createProjectMutation.isPending,
-    isDeleting: deleteProjectMutation.isPending,
-    isCloning: cloneProjectMutation.isPending,
+    createProject: createProjectMutation,
+    deleteProject: deleteProjectMutation,
+    cloneProject: cloneProjectMutation,
   };
+}
+
+export function useUpdateProject() {
+  const queryClient = useQueryClient();
+
+  const updateProjectMutation = useMutation({
+    mutationFn: async ({ id, ...updates }: Partial<VideoProject> & { id: string }) => {
+      const { data, error } = await supabase
+        .from('video_projects')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as VideoProject;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to update project: ' + error.message);
+    },
+  });
+
+  return updateProjectMutation;
 }
 
 export function useProject(projectId: string | undefined) {
