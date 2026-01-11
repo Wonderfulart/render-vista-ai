@@ -45,7 +45,9 @@ serve(async (req) => {
       });
     }
 
-    const { projectId, audioUrl } = await req.json();
+    const body = await req.json();
+    const projectId = body.projectId || body.project_id;
+    const audioUrl = body.audioUrl || body.audio_url;
 
     if (!projectId || !audioUrl) {
       return new Response(JSON.stringify({ error: "Project ID and audio URL required" }), {

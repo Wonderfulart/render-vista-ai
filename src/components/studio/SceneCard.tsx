@@ -133,7 +133,11 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
         }
 
         const { data, error } = await supabase.functions.invoke('generate-thumbnail', {
-          body: { scene_id: scene.id },
+          body: { 
+            scene_id: scene.id,
+            script_text: scriptText,
+            character_image_url: project?.master_character_url,
+          },
         });
 
         if (error) throw error;
@@ -174,8 +178,8 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
               </button>
 
               <div className="flex items-center gap-2 flex-1">
-                <span className="text-sm font-semibold text-primary">
-                  Scene {scene.scene_index}
+              <span className="text-sm font-semibold text-primary">
+                  Scene {scene.scene_index + 1}
                 </span>
                 <StatusBadge status={scene.status as 'pending' | 'processing' | 'completed' | 'failed'} />
                 {scene.retry_count > 0 && (

@@ -17,7 +17,8 @@ serve(async (req) => {
     const replicateToken = Deno.env.get("REPLICATE_API_TOKEN");
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { projectId } = await req.json();
+    const body = await req.json();
+    const projectId = body.projectId || body.project_id;
 
     if (!projectId) {
       return new Response(JSON.stringify({ error: "Project ID required" }), {

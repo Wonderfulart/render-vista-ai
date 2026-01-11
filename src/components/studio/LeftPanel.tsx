@@ -91,7 +91,10 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
       }
 
       const { data, error } = await supabase.functions.invoke('audio-splitter', {
-        body: { project_id: project.id },
+        body: { 
+          project_id: project.id,
+          audio_url: project.master_audio_url,
+        },
       });
 
       if (error) throw error;

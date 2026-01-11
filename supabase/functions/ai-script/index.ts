@@ -34,7 +34,10 @@ serve(async (req) => {
       });
     }
 
-    const { sceneId, projectContext, audioClipUrl } = await req.json();
+    const body = await req.json();
+    const sceneId = body.sceneId || body.scene_id;
+    const projectContext = body.projectContext || body.project_context || body.project_description;
+    const audioClipUrl = body.audioClipUrl || body.audio_clip_url;
 
     if (!sceneId) {
       return new Response(JSON.stringify({ error: "Scene ID required" }), {
