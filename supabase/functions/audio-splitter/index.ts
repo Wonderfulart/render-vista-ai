@@ -9,6 +9,23 @@ const corsHeaders = {
 const SCENE_DURATION = 6; // seconds
 const TOTAL_SCENES = 20;
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'projectId': 'project_id',
+    'audioUrl': 'audio_url',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -45,12 +62,20 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json();
-    const projectId = body.projectId || body.project_id;
-    const audioUrl = body.audioUrl || body.audio_url;
+    const body = normalizeParams(await req.json());
+    const projectId = body.project_id;
+    const audioUrl = body.audio_url;
 
-    if (!projectId || !audioUrl) {
-      return new Response(JSON.stringify({ error: "Project ID and audio URL required" }), {
+    // Validate required inputs
+    if (!projectId) {
+      return new Response(JSON.stringify({ error: "Project ID required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!audioUrl || typeof audioUrl !== 'string' || !audioUrl.startsWith('http')) {
+      return new Response(JSON.stringify({ error: "Valid audio URL required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -132,7 +157,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: `Created ${TOTAL_SCENES} scenes`,
-        scenesCreated: TOTAL_SCENES,
+        scenes_created: TOTAL_SCENES,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

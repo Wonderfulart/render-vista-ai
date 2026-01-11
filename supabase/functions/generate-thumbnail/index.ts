@@ -6,6 +6,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'sceneId': 'scene_id',
+    'projectId': 'project_id',
+    'scriptText': 'script_text',
+    'characterImageUrl': 'character_image_url',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,13 +61,21 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json();
-    const sceneId = body.sceneId || body.scene_id;
-    const scriptText = body.scriptText || body.script_text;
-    const characterImageUrl = body.characterImageUrl || body.character_image_url;
+    const body = normalizeParams(await req.json());
+    const sceneId = body.scene_id;
+    const scriptText = body.script_text;
+    const characterImageUrl = body.character_image_url;
 
-    if (!sceneId || !scriptText) {
-      return new Response(JSON.stringify({ error: "Scene ID and script text required" }), {
+    // Validate required inputs
+    if (!sceneId) {
+      return new Response(JSON.stringify({ error: "Scene ID required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!scriptText || typeof scriptText !== 'string' || scriptText.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "Script text is required for thumbnail generation" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -73,6 +100,11 @@ serve(async (req) => {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Log if no character image
+    if (!characterImageUrl) {
+      console.log('Generating thumbnail without character reference');
     }
 
     // Create image prompt from script
@@ -150,7 +182,7 @@ serve(async (req) => {
     // Download and upload to Supabase storage
     const imageResponse = await fetch(imageUrl);
     const imageBlob = await imageResponse.blob();
-    const fileName = `thumbnails/${sceneId}/${Date.now()}.webp`;
+    const fileName = `${scene.project_id}/thumbnails/${sceneId}/${Date.now()}.webp`;
 
     const { error: uploadError } = await supabase.storage
       .from("final-videos")
@@ -167,14 +199,25 @@ serve(async (req) => {
       });
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    // Generate signed URL instead of public URL (7-day expiry)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from("final-videos")
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 3600 * 24 * 7);
 
-    // Update scene with thumbnail
+    if (signedUrlError) {
+      console.error("Signed URL error:", signedUrlError);
+      return new Response(JSON.stringify({ error: "Failed to generate access URL" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const thumbnailUrl = signedUrlData?.signedUrl;
+
+    // Update scene with thumbnail (store file path for future URL refresh)
     const { error: updateError } = await supabase
       .from("video_scenes")
-      .update({ thumbnail_url: publicUrl })
+      .update({ thumbnail_url: thumbnailUrl })
       .eq("id", sceneId);
 
     if (updateError) {
@@ -184,7 +227,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        thumbnailUrl: publicUrl,
+        thumbnailUrl,
         cost: 0.01 
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

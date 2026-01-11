@@ -40,37 +40,24 @@ export function useCredits() {
     }) => {
       if (!user || !profile) throw new Error('Not authenticated');
 
-      const currentCredits = profile.credits;
-      if (currentCredits < amount) {
-        throw new Error('Insufficient credits');
+      // Use atomic RPC function instead of read-modify-write
+      const { data, error } = await supabase.rpc('deduct_credits', {
+        p_user_id: user.id,
+        p_amount: amount,
+        p_type: type,
+        p_description: description || null,
+        p_reference_id: referenceId || null,
+      });
+
+      if (error) throw error;
+
+      const result = data?.[0];
+      if (!result?.success) {
+        throw new Error(result?.error_message || 'Insufficient credits');
       }
 
-      const newBalance = currentCredits - amount;
-
-      // Update profile credits
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ credits: newBalance })
-        .eq('user_id', user.id);
-
-      if (profileError) throw profileError;
-
-      // Log transaction
-      const { error: txError } = await supabase
-        .from('credit_transactions')
-        .insert({
-          user_id: user.id,
-          amount: -amount,
-          balance_after: newBalance,
-          transaction_type: type,
-          description,
-          reference_id: referenceId,
-        });
-
-      if (txError) throw txError;
-
-      updateCredits(newBalance);
-      return newBalance;
+      updateCredits(result.new_balance);
+      return result.new_balance;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit-transactions'] });
@@ -94,32 +81,24 @@ export function useCredits() {
     }) => {
       if (!user || !profile) throw new Error('Not authenticated');
 
-      const newBalance = profile.credits + amount;
+      // Use atomic RPC function instead of read-modify-write
+      const { data, error } = await supabase.rpc('add_credits', {
+        p_user_id: user.id,
+        p_amount: amount,
+        p_type: type,
+        p_description: description || null,
+        p_stripe_payment_intent_id: stripePaymentIntentId || null,
+      });
 
-      // Update profile credits
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ credits: newBalance })
-        .eq('user_id', user.id);
+      if (error) throw error;
 
-      if (profileError) throw profileError;
+      const result = data?.[0];
+      if (!result?.success) {
+        throw new Error('Failed to add credits');
+      }
 
-      // Log transaction
-      const { error: txError } = await supabase
-        .from('credit_transactions')
-        .insert({
-          user_id: user.id,
-          amount: amount,
-          balance_after: newBalance,
-          transaction_type: type,
-          description,
-          stripe_payment_intent_id: stripePaymentIntentId,
-        });
-
-      if (txError) throw txError;
-
-      updateCredits(newBalance);
-      return newBalance;
+      updateCredits(result.new_balance);
+      return result.new_balance;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit-transactions'] });

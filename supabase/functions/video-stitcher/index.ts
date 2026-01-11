@@ -6,6 +6,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'projectId': 'project_id',
+    'videoUrls': 'video_urls',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -36,8 +53,8 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json();
-    const projectId = body.projectId || body.project_id;
+    const body = normalizeParams(await req.json());
+    const projectId = body.project_id;
 
     if (!projectId) {
       return new Response(JSON.stringify({ error: "Project ID required" }), {
@@ -124,7 +141,14 @@ serve(async (req) => {
     // Simulate stitching completion after a delay
     // In production, this would be a callback from Replicate
     setTimeout(async () => {
-      const finalVideoUrl = `${supabaseUrl}/storage/v1/object/public/final-videos/${projectId}/final.mp4`;
+      const fileName = `${projectId}/final.mp4`;
+      
+      // Generate signed URL for final video (7-day expiry)
+      const { data: signedUrlData } = await supabase.storage
+        .from("final-videos")
+        .createSignedUrl(fileName, 3600 * 24 * 7);
+
+      const finalVideoUrl = signedUrlData?.signedUrl || `${supabaseUrl}/storage/v1/object/public/final-videos/${fileName}`;
       
       await supabase
         .from("video_projects")
@@ -155,7 +179,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: "Video stitching started",
-        videoCount: videoUrls.length,
+        video_count: videoUrls.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

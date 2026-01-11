@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { forwardRef, useState, useImperativeHandle } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -7,12 +7,25 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, Mail, Lock } from 'lucide-react';
 
-export const LoginForm = () => {
+export interface LoginFormRef {
+  focus: () => void;
+  reset: () => void;
+}
+
+export const LoginForm = forwardRef<LoginFormRef, object>((_, ref) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
+
+  useImperativeHandle(ref, () => ({
+    focus: () => document.getElementById('email')?.focus(),
+    reset: () => {
+      setEmail('');
+      setPassword('');
+    },
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,4 +104,6 @@ export const LoginForm = () => {
       </p>
     </form>
   );
-};
+});
+
+LoginForm.displayName = 'LoginForm';

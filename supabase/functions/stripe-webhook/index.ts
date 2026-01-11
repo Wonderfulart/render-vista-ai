@@ -66,54 +66,33 @@ serve(async (req) => {
         });
       }
 
-      // Get current balance
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("credits")
-        .eq("user_id", userId)
-        .single();
+      // Use atomic add_credits RPC function
+      const { data: creditResult, error: creditError } = await supabase.rpc('add_credits', {
+        p_user_id: userId,
+        p_amount: totalCredits,
+        p_type: 'purchase',
+        p_description: `Purchased ${packageId} package - ${totalCredits} credits`,
+        p_stripe_payment_intent_id: session.payment_intent as string,
+      });
 
-      if (profileError || !profile) {
-        console.error("Profile not found:", profileError);
-        return new Response(JSON.stringify({ error: "Profile not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const newBalance = (profile.credits || 0) + totalCredits;
-
-      // Update credits
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ credits: newBalance })
-        .eq("user_id", userId);
-
-      if (updateError) {
-        console.error("Failed to update credits:", updateError);
-        return new Response(JSON.stringify({ error: "Failed to update credits" }), {
+      if (creditError) {
+        console.error("Failed to add credits:", creditError);
+        return new Response(JSON.stringify({ error: "Failed to add credits" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Log transaction
-      const { error: txError } = await supabase
-        .from("credit_transactions")
-        .insert({
-          user_id: userId,
-          amount: totalCredits,
-          balance_after: newBalance,
-          transaction_type: "purchase",
-          description: `Purchased ${packageId} package - ${totalCredits} credits`,
-          stripe_payment_intent_id: session.payment_intent as string,
+      const result = creditResult?.[0];
+      if (!result?.success) {
+        console.error("Credit addition failed");
+        return new Response(JSON.stringify({ error: "Credit addition failed" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-
-      if (txError) {
-        console.error("Failed to log transaction:", txError);
       }
 
-      console.log(`Added ${totalCredits} credits to user ${userId}. New balance: ${newBalance}`);
+      console.log(`Added ${totalCredits} credits to user ${userId}. New balance: ${result.new_balance}`);
     }
 
     return new Response(

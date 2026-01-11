@@ -6,6 +6,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'sceneId': 'scene_id',
+    'videoUrl': 'video_url',
+    'thumbnailUrl': 'thumbnail_url',
+    'errorMessage': 'error_message',
+    'processingTimeMs': 'processing_time_ms',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -16,14 +36,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { 
-      sceneId, 
-      status, 
-      videoUrl, 
-      thumbnailUrl,
-      errorMessage,
-      processingTimeMs 
-    } = await req.json();
+    const body = normalizeParams(await req.json());
+    const sceneId = body.scene_id;
+    const status = body.status;
+    const videoUrl = body.video_url;
+    const thumbnailUrl = body.thumbnail_url;
+    const errorMessage = body.error_message;
+    const processingTimeMs = body.processing_time_ms;
 
     if (!sceneId) {
       return new Response(JSON.stringify({ error: "Scene ID required" }), {
@@ -87,33 +106,20 @@ serve(async (req) => {
       })
       .eq("scene_id", sceneId);
 
-    // Handle failure - refund credits if permanent failure
+    // Handle failure - refund credits if permanent failure using atomic RPC
     if (status === "failed" && scene.retry_count >= 2) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("credits")
-        .eq("user_id", scene.user_id)
-        .single();
+      const refundAmount = scene.generation_cost || 0.98;
+      
+      const { error: refundError } = await supabase.rpc('add_credits', {
+        p_user_id: scene.user_id,
+        p_amount: refundAmount,
+        p_type: 'refund',
+        p_description: `Refund for failed scene ${scene.scene_index}`,
+        p_reference_id: sceneId,
+      });
 
-      if (profile) {
-        const refundAmount = scene.generation_cost || 0.98;
-        const newBalance = profile.credits + refundAmount;
-
-        await supabase
-          .from("profiles")
-          .update({ credits: newBalance })
-          .eq("user_id", scene.user_id);
-
-        await supabase
-          .from("credit_transactions")
-          .insert({
-            user_id: scene.user_id,
-            amount: refundAmount,
-            balance_after: newBalance,
-            transaction_type: "refund",
-            description: `Refund for failed scene ${scene.scene_index + 1}`,
-            reference_id: sceneId,
-          });
+      if (refundError) {
+        console.error("Refund error:", refundError);
       }
     }
 
@@ -143,7 +149,7 @@ serve(async (req) => {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${supabaseKey}`,
           },
-          body: JSON.stringify({ projectId: scene.project_id }),
+          body: JSON.stringify({ project_id: scene.project_id }),
         }).catch(err => console.error("Failed to trigger stitching:", err));
       }
     }
