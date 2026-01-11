@@ -17,6 +17,7 @@ import { AnimatedCounter } from '@/components/ui/AnimatedCounter';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Edit2, Check, X, Image, Music, Calculator, Scissors, Loader2 } from 'lucide-react';
+import { useAudioSplitter } from '@/hooks/useAudioSplitter';
 
 interface LeftPanelProps {
   project: VideoProject;
@@ -28,7 +29,7 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [title, setTitle] = useState(project.title);
   const [uploading, setUploading] = useState<'character' | 'audio' | null>(null);
-  const [isSplitting, setIsSplitting] = useState(false);
+  const { splitAudio, isSplitting } = useAudioSplitter(project.id);
 
   useEffect(() => {
     setTitle(project.title);
@@ -81,37 +82,8 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
     toast.success('Shot template applied');
   };
 
-  const handleSplitAudio = async () => {
-    if (!project.master_audio_url) {
-      toast.error('Please upload audio first');
-      return;
-    }
-
-    setIsSplitting(true);
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error('Please sign in to split audio');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('audio-splitter', {
-        body: { 
-          project_id: project.id,
-          audio_url: project.master_audio_url,
-        },
-      });
-
-      if (error) throw error;
-
-      toast.success(`Audio split into ${data?.scenes_created || 20} scenes!`);
-    } catch (err: any) {
-      console.error('Audio split error:', err);
-      toast.error(err.message || 'Failed to split audio');
-    } finally {
-      setIsSplitting(false);
-    }
+  const handleSplitAudio = () => {
+    splitAudio(project.master_audio_url);
   };
 
   const estimatedCost = project.total_cost || 0;
