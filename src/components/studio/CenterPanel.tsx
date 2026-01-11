@@ -60,7 +60,7 @@ export const CenterPanel = ({ scenes, project, onUpdateScene, onReorderScenes }:
       // Update indices
       const newOrder = newScenes.map((scene, index) => ({
         id: scene.id,
-        scene_index: index + 1,
+        scene_index: index,
       }));
 
       await onReorderScenes(newOrder);

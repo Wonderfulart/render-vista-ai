@@ -142,8 +142,8 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
 
         if (error) throw error;
 
-        if (data?.thumbnail_url) {
-          await onUpdate({ thumbnail_url: data.thumbnail_url });
+        if (data?.thumbnailUrl) {
+          await onUpdate({ thumbnail_url: data.thumbnailUrl });
           toast.success(`Thumbnail generated! Cost: $${THUMBNAIL_COST.toFixed(2)}`);
         }
       } catch (err: any) {
