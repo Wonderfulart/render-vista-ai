@@ -6,6 +6,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'sceneId': 'scene_id',
+    'projectContext': 'project_context',
+    'audioClipUrl': 'audio_clip_url',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -34,10 +52,10 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json();
-    const sceneId = body.sceneId || body.scene_id;
-    const projectContext = body.projectContext || body.project_context || body.project_description;
-    const audioClipUrl = body.audioClipUrl || body.audio_clip_url;
+    const body = normalizeParams(await req.json());
+    const sceneId = body.scene_id;
+    const projectContext = body.project_context || body.project_description;
+    const audioClipUrl = body.audio_clip_url;
 
     if (!sceneId) {
       return new Response(JSON.stringify({ error: "Scene ID required" }), {

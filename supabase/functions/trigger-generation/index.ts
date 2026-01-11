@@ -8,6 +8,28 @@ const corsHeaders = {
 
 const GENERATION_COST = 0.98;
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'sceneId': 'scene_id',
+    'projectId': 'project_id',
+    'audioUrl': 'audio_url',
+    'scriptText': 'script_text',
+    'characterImageUrl': 'character_image_url',
+    'projectContext': 'project_context',
+    'audioClipUrl': 'audio_clip_url',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -44,8 +66,8 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json();
-    const sceneId = body.sceneId || body.scene_id;
+    const body = normalizeParams(await req.json());
+    const sceneId = body.scene_id;
 
     if (!sceneId) {
       return new Response(JSON.stringify({ error: "Scene ID required" }), {
@@ -83,61 +105,38 @@ serve(async (req) => {
       });
     }
 
-    // Check user credits
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("credits")
-      .eq("user_id", user.id)
-      .single();
+    // Atomic credit deduction using RPC
+    const { data: creditResult, error: creditError } = await supabase
+      .rpc('deduct_credits', {
+        p_user_id: user.id,
+        p_amount: GENERATION_COST,
+        p_type: 'generation',
+        p_description: `Scene ${scene.scene_index} generation`,
+        p_reference_id: sceneId,
+      });
 
-    if (profileError || !profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
+    if (creditError) {
+      console.error("Credit deduction error:", creditError);
+      return new Response(JSON.stringify({ error: "Failed to process credits" }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (profile.credits < GENERATION_COST) {
+    const result = creditResult?.[0];
+    if (!result?.success) {
       return new Response(
         JSON.stringify({ 
-          error: "Insufficient credits",
+          error: result?.error_message || "Insufficient credits",
           required: GENERATION_COST,
-          available: profile.credits
+          available: result?.new_balance
         }), {
         status: 402,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Deduct credits
-    const newBalance = profile.credits - GENERATION_COST;
-    const { error: deductError } = await supabase
-      .from("profiles")
-      .update({ credits: newBalance })
-      .eq("user_id", user.id);
-
-    if (deductError) {
-      return new Response(JSON.stringify({ error: "Failed to deduct credits" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Log transaction
-    const { error: txError } = await supabase
-      .from("credit_transactions")
-      .insert({
-        user_id: user.id,
-        amount: -GENERATION_COST,
-        balance_after: newBalance,
-        transaction_type: "generation",
-        description: `Scene ${scene.scene_index} generation`,
-        reference_id: sceneId,
-      });
-
-    if (txError) {
-      console.error("Transaction log error:", txError);
-    }
+    const newBalance = result.new_balance;
 
     // Update scene status to queued
     const { error: updateError } = await supabase
@@ -191,11 +190,14 @@ serve(async (req) => {
     if (!webhookResponse.ok) {
       console.error("Webhook error:", await webhookResponse.text());
       
-      // Refund credits on webhook failure
-      await supabase
-        .from("profiles")
-        .update({ credits: profile.credits })
-        .eq("user_id", user.id);
+      // Refund credits on webhook failure using atomic add
+      await supabase.rpc('add_credits', {
+        p_user_id: user.id,
+        p_amount: GENERATION_COST,
+        p_type: 'refund',
+        p_description: `Refund for failed scene ${scene.scene_index} queue`,
+        p_reference_id: sceneId,
+      });
 
       await supabase
         .from("video_scenes")

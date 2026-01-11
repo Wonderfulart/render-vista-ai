@@ -15,6 +15,24 @@ const CREDIT_PACKAGES = {
   xl: { price: 10000, credits: 100, bonus: 20, label: "$100 - 120 credits (+20 bonus)" },
 };
 
+// Normalize parameters to support both camelCase and snake_case
+function normalizeParams<T extends Record<string, unknown>>(body: T): T {
+  const result: Record<string, unknown> = { ...body };
+  const mappings: Record<string, string> = {
+    'packageId': 'package_id',
+    'successUrl': 'success_url',
+    'cancelUrl': 'cancel_url',
+  };
+  
+  for (const [camel, snake] of Object.entries(mappings)) {
+    if (result[camel] !== undefined && result[snake] === undefined) {
+      result[snake] = result[camel];
+    }
+  }
+  
+  return result as T;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,7 +69,10 @@ serve(async (req) => {
       });
     }
 
-    const { packageId, successUrl, cancelUrl } = await req.json();
+    const body = normalizeParams(await req.json());
+    const packageId = body.package_id || body.packageId;
+    const successUrl = body.success_url || body.successUrl;
+    const cancelUrl = body.cancel_url || body.cancelUrl;
 
     if (!packageId || !CREDIT_PACKAGES[packageId as keyof typeof CREDIT_PACKAGES]) {
       return new Response(JSON.stringify({ error: "Invalid package" }), {
@@ -92,7 +113,7 @@ serve(async (req) => {
           price_data: {
             currency: "usd",
             product_data: {
-              name: `VeoStudio Credits - ${packageId.charAt(0).toUpperCase() + packageId.slice(1)} Package`,
+              name: `VeoStudio Credits - ${(packageId as string).charAt(0).toUpperCase() + (packageId as string).slice(1)} Package`,
               description: pkg.label,
             },
             unit_amount: pkg.price,
@@ -105,7 +126,7 @@ serve(async (req) => {
       cancel_url: cancelUrl || `${req.headers.get("origin")}/dashboard?checkout=cancelled`,
       metadata: {
         user_id: user.id,
-        package_id: packageId,
+        package_id: packageId as string,
         credits: pkg.credits.toString(),
         bonus_credits: pkg.bonus.toString(),
         total_credits: (pkg.credits + pkg.bonus).toString(),
@@ -116,7 +137,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         url: session.url,
-        sessionId: session.id,
+        session_id: session.id,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
