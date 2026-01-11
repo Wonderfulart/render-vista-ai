@@ -1,14 +1,14 @@
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/useCredits';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { AnimatedCounter } from '@/components/ui/AnimatedCounter';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SparkleButton } from '@/components/ui/SparkleButton';
 import { Separator } from '@/components/ui/separator';
+import { CreditPackageDialog } from './CreditPackageDialog';
 import { format } from 'date-fns';
 import { CreditCard, Plus, ArrowDownRight, ArrowUpRight, Clock, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface RightPanelProps {
   projectId: string;
@@ -17,12 +17,9 @@ interface RightPanelProps {
 export const RightPanel = ({ projectId }: RightPanelProps) => {
   const { profile } = useAuth();
   const { transactions, isLoading } = useCredits();
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
 
   const recentTransactions = transactions?.slice(0, 5) || [];
-
-  const handleAddCredits = () => {
-    toast.info('Stripe payment integration coming soon!');
-  };
 
   return (
     <Card className="h-full flex flex-col">
@@ -41,7 +38,7 @@ export const RightPanel = ({ projectId }: RightPanelProps) => {
             $<AnimatedCounter value={profile?.credits || 0} decimals={2} />
           </p>
           <SparkleButton
-            onClick={handleAddCredits}
+            onClick={() => setShowCreditDialog(true)}
             className="w-full mt-3 bg-rainbow-pastel text-foreground hover:opacity-90"
             sparkleCount={8}
           >
@@ -49,6 +46,8 @@ export const RightPanel = ({ projectId }: RightPanelProps) => {
             Add Credits
           </SparkleButton>
         </div>
+
+        <CreditPackageDialog open={showCreditDialog} onOpenChange={setShowCreditDialog} />
 
         {/* Generation Queue */}
         <div className="p-4 bg-secondary rounded-lg">

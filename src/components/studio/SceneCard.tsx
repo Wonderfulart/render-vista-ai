@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { VideoScene, CameraTier } from '@/types/database';
+import { VideoScene, VideoProject, CameraTier } from '@/types/database';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CameraSelector } from './CameraSelector';
+import { AISuggestionsPopover } from './AISuggestionsPopover';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '@/integrations/supabase/client';
+import { GENERATION_COST, THUMBNAIL_COST } from '@/hooks/useCredits';
 import { 
   GripVertical, 
   Sparkles, 
@@ -16,19 +19,23 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
-  Video
+  Video,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SceneCardProps {
   scene: VideoScene;
+  project?: VideoProject;
   onUpdate: (updates: Partial<VideoScene>) => Promise<VideoScene>;
 }
 
-export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
+export const SceneCard = ({ scene, project, onUpdate }: SceneCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [scriptText, setScriptText] = useState(scene.script_text || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
 
   const {
     attributes,
@@ -57,16 +64,72 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
     toast.success(`Camera set to ${movement}`);
   };
 
-  const handleGenerate = () => {
-    toast.info('Scene generation coming soon! Edge functions required.');
+  const handleGenerate = async () => {
+    if (!scriptText.trim()) {
+      toast.error('Please add a script before generating');
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please sign in to generate');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('trigger-generation', {
+        body: { scene_id: scene.id },
+      });
+
+      if (error) throw error;
+
+      toast.success(`Generation started! Cost: $${GENERATION_COST.toFixed(2)}`);
+    } catch (err: any) {
+      console.error('Generation error:', err);
+      toast.error(err.message || 'Failed to start generation');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
-  const handleAISuggest = () => {
-    toast.info('AI Script suggestions coming soon! API key required.');
+  const handleGenerateThumbnail = async () => {
+    if (!scriptText.trim()) {
+      toast.error('Please add a script before generating thumbnail');
+      return;
+    }
+
+    setIsGeneratingThumbnail(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please sign in to generate thumbnail');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('generate-thumbnail', {
+        body: { scene_id: scene.id },
+      });
+
+      if (error) throw error;
+
+      if (data?.thumbnail_url) {
+        await onUpdate({ thumbnail_url: data.thumbnail_url });
+        toast.success(`Thumbnail generated! Cost: $${THUMBNAIL_COST.toFixed(2)}`);
+      }
+    } catch (err: any) {
+      console.error('Thumbnail error:', err);
+      toast.error(err.message || 'Failed to generate thumbnail');
+    } finally {
+      setIsGeneratingThumbnail(false);
+    }
   };
 
-  const handleGenerateThumbnail = () => {
-    toast.info('Thumbnail generation coming soon! Replicate API required.');
+  const handleSuggestionSelect = (suggestion: string) => {
+    setScriptText(suggestion);
+    onUpdate({ script_text: suggestion });
   };
 
   return (
@@ -145,15 +208,20 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-muted-foreground">Script</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs"
-                        onClick={handleAISuggest}
+                      <AISuggestionsPopover
+                        scene={scene}
+                        project={project}
+                        onSelectSuggestion={handleSuggestionSelect}
                       >
-                        <Sparkles className="mr-1 h-3 w-3" />
-                        AI Suggest
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                        >
+                          <Sparkles className="mr-1 h-3 w-3" />
+                          AI Suggest
+                        </Button>
+                      </AISuggestionsPopover>
                     </div>
                     <Textarea
                       value={scriptText}
@@ -181,8 +249,13 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
                       size="sm"
                       className="flex-1"
                       onClick={handleGenerateThumbnail}
+                      disabled={isGeneratingThumbnail}
                     >
-                      <Image className="mr-1 h-3 w-3" />
+                      {isGeneratingThumbnail ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Image className="mr-1 h-3 w-3" />
+                      )}
                       Thumbnail
                     </Button>
 
@@ -197,8 +270,13 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
                         size="sm"
                         className="flex-1"
                         onClick={handleGenerate}
+                        disabled={isGenerating}
                       >
-                        <RefreshCw className="mr-1 h-3 w-3" />
+                        {isGenerating ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-1 h-3 w-3" />
+                        )}
                         Retry
                       </Button>
                     ) : (
@@ -206,11 +284,11 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
                         size="sm"
                         className="flex-1 bg-rainbow-pastel text-foreground hover:opacity-90"
                         onClick={handleGenerate}
-                        disabled={scene.status === 'processing'}
+                        disabled={scene.status === 'processing' || isGenerating}
                       >
-                        {scene.status === 'processing' ? (
+                        {scene.status === 'processing' || isGenerating ? (
                           <>
-                            <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                             Generating...
                           </>
                         ) : (

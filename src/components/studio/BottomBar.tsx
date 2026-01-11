@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { VideoProject, VideoScene } from '@/types/database';
 import { useProjects } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { SparkleButton } from '@/components/ui/SparkleButton';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Save, Copy, Download, ArrowLeft } from 'lucide-react';
+import { Copy, Download, ArrowLeft, Loader2 } from 'lucide-react';
 
 interface BottomBarProps {
   project: VideoProject;
@@ -15,10 +17,11 @@ interface BottomBarProps {
 export const BottomBar = ({ project, scenes }: BottomBarProps) => {
   const navigate = useNavigate();
   const { cloneProject } = useProjects();
+  const [isExporting, setIsExporting] = useState(false);
 
   const completedCount = scenes.filter(s => s.status === 'completed').length;
-  const progress = (completedCount / scenes.length) * 100;
-  const allCompleted = completedCount === scenes.length;
+  const progress = scenes.length > 0 ? (completedCount / scenes.length) * 100 : 0;
+  const allCompleted = scenes.length > 0 && completedCount === scenes.length;
 
   const handleClone = async () => {
     const newId = await cloneProject.mutateAsync(project.id);
@@ -27,12 +30,40 @@ export const BottomBar = ({ project, scenes }: BottomBarProps) => {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!allCompleted) {
       toast.error('Complete all scenes before exporting');
       return;
     }
-    toast.info('Video export coming soon! All scenes need to be generated first.');
+
+    setIsExporting(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please sign in to export');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('video-stitcher', {
+        body: { project_id: project.id },
+      });
+
+      if (error) throw error;
+
+      if (data?.final_video_url) {
+        toast.success('Video exported successfully!');
+        // Open the video in a new tab
+        window.open(data.final_video_url, '_blank');
+      } else {
+        toast.success('Video export started. Check back soon!');
+      }
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error(err.message || 'Failed to export video');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -68,13 +99,17 @@ export const BottomBar = ({ project, scenes }: BottomBarProps) => {
 
             <SparkleButton
               size="sm"
-              disabled={!allCompleted}
+              disabled={!allCompleted || isExporting}
               onClick={handleExport}
               className={allCompleted ? 'bg-rainbow-pastel text-foreground hover:opacity-90' : ''}
-              sparkleCount={allCompleted ? 12 : 0}
+              sparkleCount={allCompleted && !isExporting ? 12 : 0}
             >
-              <Download className="mr-2 h-4 w-4" />
-              Export Video
+              {isExporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {isExporting ? 'Exporting...' : 'Export Video'}
             </SparkleButton>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { VideoScene } from '@/types/database';
+import { VideoScene, VideoProject } from '@/types/database';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SceneCard } from './SceneCard';
@@ -22,11 +22,12 @@ import { Layers } from 'lucide-react';
 
 interface CenterPanelProps {
   scenes: VideoScene[];
+  project?: VideoProject;
   onUpdateScene: (args: { sceneId: string; updates: Partial<VideoScene> }) => Promise<VideoScene>;
   onReorderScenes: (newOrder: { id: string; scene_index: number }[]) => Promise<void>;
 }
 
-export const CenterPanel = ({ scenes, onUpdateScene, onReorderScenes }: CenterPanelProps) => {
+export const CenterPanel = ({ scenes, project, onUpdateScene, onReorderScenes }: CenterPanelProps) => {
   const [localScenes, setLocalScenes] = useState(scenes);
 
   useEffect(() => {
@@ -92,6 +93,7 @@ export const CenterPanel = ({ scenes, onUpdateScene, onReorderScenes }: CenterPa
                   <SceneCard
                     key={scene.id}
                     scene={scene}
+                    project={project}
                     onUpdate={(updates) => onUpdateScene({ sceneId: scene.id, updates })}
                   />
                 ))}

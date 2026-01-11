@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProject, useScenes, useShotTemplates } from '@/hooks/useProjects';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRealtimeScenes, useRealtimeProfile } from '@/hooks/useRealtimeScenes';
 import { LeftPanel } from '@/components/studio/LeftPanel';
 import { CenterPanel } from '@/components/studio/CenterPanel';
 import { RightPanel } from '@/components/studio/RightPanel';
@@ -18,6 +18,10 @@ const Studio = () => {
   const { project, isLoading: projectLoading, updateProject } = useProject(projectId);
   const { scenes, isLoading: scenesLoading, updateScene, reorderScenes } = useScenes(projectId);
   const { templates } = useShotTemplates();
+
+  // Real-time subscriptions for live updates
+  useRealtimeScenes(projectId);
+  useRealtimeProfile(user?.id);
 
   if (projectLoading || scenesLoading) {
     return (
@@ -74,6 +78,7 @@ const Studio = () => {
           <div className="lg:col-span-6">
             <CenterPanel
               scenes={scenes}
+              project={project}
               onUpdateScene={updateScene}
               onReorderScenes={reorderScenes}
             />
