@@ -90,8 +90,8 @@ Each suggestion should:
 Context:
 - Project: ${project.title || 'Music Video'}
 - Description: ${project.description || 'A dynamic music video'}
-- Scene number: ${scene.scene_index + 1} of 20
-- Scene position: ${scene.scene_index < 4 ? 'Opening/intro' : scene.scene_index < 16 ? 'Main body' : 'Climax/outro'}
+- Scene number: ${scene.scene_index} of 20
+- Scene position: ${scene.scene_index <= 4 ? 'Opening/intro' : scene.scene_index <= 16 ? 'Main body' : 'Climax/outro'}
 ${projectContext ? `- Additional context: ${projectContext}` : ''}
 
 Return ONLY a JSON array of 3 strings, no other text.`;
