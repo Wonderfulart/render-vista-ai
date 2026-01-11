@@ -159,7 +159,7 @@ serve(async (req) => {
         user_id: user.id,
         project_id: scene.project_id,
         scene_id: sceneId,
-        status: "pending",
+        status: "queued",
         priority: scene.scene_index,
       });
 
