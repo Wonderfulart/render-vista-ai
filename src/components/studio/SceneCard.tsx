@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { VideoScene } from '@/types/database';
-import { CAMERA_MOVEMENTS } from '@/types/database';
+import { VideoScene, CameraTier } from '@/types/database';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -53,7 +52,7 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
     }
   };
 
-  const handleCameraChange = async (movement: string, tier: string) => {
+  const handleCameraChange = async (movement: string, tier: CameraTier) => {
     await onUpdate({ camera_movement: movement, camera_tier: tier });
     toast.success(`Camera set to ${movement}`);
   };
@@ -92,7 +91,7 @@ export const SceneCard = ({ scene, onUpdate }: SceneCardProps) => {
               <span className="text-sm font-semibold text-primary">
                 Scene {scene.scene_index}
               </span>
-              <StatusBadge status={scene.status as 'pending' | 'processing' | 'completed' | 'failed'} size="sm" />
+              <StatusBadge status={scene.status as 'pending' | 'processing' | 'completed' | 'failed'} />
             </div>
 
             {/* Thumbnail Preview */}
