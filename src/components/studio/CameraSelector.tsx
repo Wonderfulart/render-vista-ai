@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CAMERA_MOVEMENTS, CameraMovement } from '@/types/database';
+import { getCameraMovementsByTier, CameraTier } from '@/types/database';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -7,11 +7,11 @@ import { cn } from '@/lib/utils';
 
 interface CameraSelectorProps {
   currentMovement: string;
-  currentTier: string;
-  onChange: (movement: string, tier: string) => void;
+  currentTier: CameraTier;
+  onChange: (movement: string, tier: CameraTier) => void;
 }
 
-const tierLabels: Record<string, string> = {
+const tierLabels: Record<CameraTier, string> = {
   basic: 'Basic',
   advanced: 'Advanced',
   cinematic: 'Cinematic',
@@ -19,23 +19,16 @@ const tierLabels: Record<string, string> = {
 };
 
 export const CameraSelector = ({ currentMovement, currentTier, onChange }: CameraSelectorProps) => {
-  const [selectedTier, setSelectedTier] = useState(currentTier || 'basic');
+  const [selectedTier, setSelectedTier] = useState<CameraTier>(currentTier || 'basic');
 
-  const movementsByTier = CAMERA_MOVEMENTS.reduce((acc, movement) => {
-    if (!acc[movement.tier]) {
-      acc[movement.tier] = [];
-    }
-    acc[movement.tier].push(movement);
-    return acc;
-  }, {} as Record<string, CameraMovement[]>);
-
-  const tiers = Object.keys(movementsByTier);
+  const movementsByTier = getCameraMovementsByTier();
+  const tiers = Object.keys(movementsByTier) as CameraTier[];
 
   return (
     <div className="space-y-2">
       <span className="text-xs font-medium text-muted-foreground">Camera Movement</span>
       
-      <Tabs value={selectedTier} onValueChange={setSelectedTier}>
+      <Tabs value={selectedTier} onValueChange={(v) => setSelectedTier(v as CameraTier)}>
         <TabsList className="w-full grid grid-cols-4 h-8">
           {tiers.map((tier) => (
             <TabsTrigger key={tier} value={tier} className="text-xs px-2">
@@ -58,7 +51,7 @@ export const CameraSelector = ({ currentMovement, currentTier, onChange }: Camer
                         currentMovement === movement.id &&
                           'border-primary bg-primary/5 text-primary'
                       )}
-                      onClick={() => onChange(movement.id, tier)}
+                      onClick={() => onChange(movement.id, tier as CameraTier)}
                     >
                       {movement.name}
                     </Button>

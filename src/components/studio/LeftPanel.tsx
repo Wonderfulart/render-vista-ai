@@ -144,10 +144,12 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
             </div>
           ) : (
             <FileUploader
-              accept="image/*"
-              onFileSelect={(file) => handleFileUpload(file, 'character')}
-              isUploading={uploading === 'character'}
-              label="Drop character image here"
+              type="image"
+              bucket="character-images"
+              value={null}
+              onChange={(url) => {
+                if (url) onUpdateProject({ master_character_url: url });
+              }}
             />
           )}
         </div>
@@ -182,10 +184,12 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
             </div>
           ) : (
             <FileUploader
-              accept="audio/*"
-              onFileSelect={(file) => handleFileUpload(file, 'audio')}
-              isUploading={uploading === 'audio'}
-              label="Drop audio file here"
+              type="audio"
+              bucket="scene-audio"
+              value={null}
+              onChange={(url) => {
+                if (url) onUpdateProject({ master_audio_url: url });
+              }}
             />
           )}
         </div>

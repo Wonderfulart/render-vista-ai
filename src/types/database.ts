@@ -142,4 +142,26 @@ export const CAMERA_MOVEMENTS = {
 } as const;
 
 export type CameraTier = keyof typeof CAMERA_MOVEMENTS;
-export type CameraMovement = typeof CAMERA_MOVEMENTS[CameraTier][number]['id'];
+export type CameraMovement = {
+  id: string;
+  name: string;
+  description: string;
+  tier: CameraTier;
+};
+
+// Helper to get all movements as a flat array
+export const getAllCameraMovements = (): CameraMovement[] => {
+  return (Object.entries(CAMERA_MOVEMENTS) as [CameraTier, readonly { id: string; name: string; description: string }[]][])
+    .flatMap(([tier, movements]) => 
+      movements.map(m => ({ ...m, tier }))
+    );
+};
+
+// Helper to get movements grouped by tier
+export const getCameraMovementsByTier = (): Record<CameraTier, CameraMovement[]> => {
+  return (Object.entries(CAMERA_MOVEMENTS) as [CameraTier, readonly { id: string; name: string; description: string }[]][])
+    .reduce((acc, [tier, movements]) => {
+      acc[tier] = movements.map(m => ({ ...m, tier }));
+      return acc;
+    }, {} as Record<CameraTier, CameraMovement[]>);
+};
