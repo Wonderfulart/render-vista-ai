@@ -179,7 +179,7 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
 
               <div className="flex items-center gap-2 flex-1">
               <span className="text-sm font-semibold text-primary">
-                  Scene {scene.scene_index + 1}
+                  Scene {scene.scene_index}
                 </span>
                 <StatusBadge status={scene.status as 'pending' | 'processing' | 'completed' | 'failed'} />
                 {scene.retry_count > 0 && (

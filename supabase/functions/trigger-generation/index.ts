@@ -131,7 +131,7 @@ serve(async (req) => {
         amount: -GENERATION_COST,
         balance_after: newBalance,
         transaction_type: "generation",
-        description: `Scene ${scene.scene_index + 1} generation`,
+        description: `Scene ${scene.scene_index} generation`,
         reference_id: sceneId,
       });
 

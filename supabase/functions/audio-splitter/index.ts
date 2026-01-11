@@ -80,13 +80,13 @@ serve(async (req) => {
     // For now, we'll create placeholder scenes and simulate the split
     // In production, this would use FFmpeg via Replicate or similar service
     
-    // Create 20 scenes for this project
+    // Create 20 scenes for this project (1-based indexing)
     const scenes = [];
     for (let i = 0; i < TOTAL_SCENES; i++) {
       scenes.push({
         project_id: projectId,
         user_id: user.id,
-        scene_index: i,
+        scene_index: i + 1,
         status: "pending",
         camera_movement: "static",
         camera_tier: "basic",
