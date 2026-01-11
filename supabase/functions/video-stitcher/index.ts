@@ -17,6 +17,25 @@ serve(async (req) => {
     const replicateToken = Deno.env.get("REPLICATE_API_TOKEN");
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Authentication check
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Authorization required" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Invalid authorization token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const projectId = body.projectId || body.project_id;
 
@@ -37,6 +56,14 @@ serve(async (req) => {
     if (projectError || !project) {
       return new Response(JSON.stringify({ error: "Project not found" }), {
         status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Verify user owns the project
+    if (project.user_id !== user.id) {
+      return new Response(JSON.stringify({ error: "Access denied" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
