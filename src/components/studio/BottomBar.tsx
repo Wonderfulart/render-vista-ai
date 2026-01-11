@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { VideoProject, VideoScene } from '@/types/database';
 import { useProjects } from '@/hooks/useProjects';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { SparkleButton } from '@/components/ui/SparkleButton';
+import { BulkGenerateDialog } from './BulkGenerateDialog';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Copy, Download, ArrowLeft, Loader2 } from 'lucide-react';
+import { Copy, Download, ArrowLeft, Loader2, Zap } from 'lucide-react';
 
 interface BottomBarProps {
   project: VideoProject;
@@ -16,10 +18,14 @@ interface BottomBarProps {
 
 export const BottomBar = ({ project, scenes }: BottomBarProps) => {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const { cloneProject } = useProjects();
   const [isExporting, setIsExporting] = useState(false);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
 
   const completedCount = scenes.filter(s => s.status === 'completed').length;
+  const pendingScenes = scenes.filter(s => s.status === 'pending' && s.script_text?.trim());
   const progress = scenes.length > 0 ? (completedCount / scenes.length) * 100 : 0;
   const allCompleted = scenes.length > 0 && completedCount === scenes.length;
 
@@ -53,7 +59,6 @@ export const BottomBar = ({ project, scenes }: BottomBarProps) => {
 
       if (data?.final_video_url) {
         toast.success('Video exported successfully!');
-        // Open the video in a new tab
         window.open(data.final_video_url, '_blank');
       } else {
         toast.success('Video export started. Check back soon!');
@@ -63,6 +68,36 @@ export const BottomBar = ({ project, scenes }: BottomBarProps) => {
       toast.error(err.message || 'Failed to export video');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleBulkGenerate = async () => {
+    setShowBulkDialog(false);
+    setIsBulkGenerating(true);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const scene of pendingScenes) {
+      try {
+        const { error } = await supabase.functions.invoke('trigger-generation', {
+          body: { scene_id: scene.id },
+        });
+
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to queue scene ${scene.scene_index}:`, err);
+        failCount++;
+      }
+    }
+
+    setIsBulkGenerating(false);
+
+    if (failCount > 0) {
+      toast.warning(`Queued ${successCount} scenes, ${failCount} failed`);
+    } else {
+      toast.success(`Queued ${successCount} scenes for generation!`);
     }
   };
 
@@ -92,6 +127,22 @@ export const BottomBar = ({ project, scenes }: BottomBarProps) => {
 
           {/* Right - Actions */}
           <div className="flex items-center gap-2">
+            {pendingScenes.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBulkDialog(true)}
+                disabled={isBulkGenerating}
+              >
+                {isBulkGenerating ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Zap className="mr-2 h-4 w-4" />
+                )}
+                Generate All ({pendingScenes.length})
+              </Button>
+            )}
+
             <Button variant="outline" size="sm" onClick={handleClone}>
               <Copy className="mr-2 h-4 w-4" />
               Clone
@@ -114,6 +165,14 @@ export const BottomBar = ({ project, scenes }: BottomBarProps) => {
           </div>
         </div>
       </div>
+
+      <BulkGenerateDialog
+        open={showBulkDialog}
+        onOpenChange={setShowBulkDialog}
+        pendingScenes={pendingScenes}
+        credits={profile?.credits || 0}
+        onConfirm={handleBulkGenerate}
+      />
     </div>
   );
 };
