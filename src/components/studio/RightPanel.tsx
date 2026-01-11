@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/useCredits';
+import { useQueue } from '@/hooks/useQueue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnimatedCounter } from '@/components/ui/AnimatedCounter';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,6 +18,7 @@ interface RightPanelProps {
 export const RightPanel = ({ projectId }: RightPanelProps) => {
   const { profile } = useAuth();
   const { transactions, isLoading } = useCredits();
+  const { totalInQueue, pendingCount, processingCount, estimatedWaitTime, hasItemsInQueue } = useQueue(projectId);
   const [showCreditDialog, setShowCreditDialog] = useState(false);
 
   const recentTransactions = transactions?.slice(0, 5) || [];
@@ -55,9 +57,28 @@ export const RightPanel = ({ projectId }: RightPanelProps) => {
             <Clock className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Generation Queue</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            No scenes in queue
-          </p>
+          
+          {hasItemsInQueue ? (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Pending:</span>
+                <span className="font-medium">{pendingCount}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Processing:</span>
+                <span className="font-medium text-primary">{processingCount}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Est. wait:</span>
+                <span className="font-medium">{estimatedWaitTime}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No scenes in queue
+            </p>
+          )}
         </div>
 
         <Separator />
