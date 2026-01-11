@@ -59,12 +59,18 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
       return;
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data: signedData, error: signedError } = await supabase.storage
       .from(bucket)
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 60 * 60 * 24 * 7); // 7-day expiry
+
+    if (signedError) {
+      toast.error(`Failed to get file URL`);
+      setUploading(null);
+      return;
+    }
 
     const updateField = type === 'character' ? 'master_character_url' : 'master_audio_url';
-    await onUpdateProject({ [updateField]: publicUrl });
+    await onUpdateProject({ [updateField]: signedData?.signedUrl });
     
     toast.success(`${type === 'character' ? 'Character image' : 'Audio'} uploaded!`);
     setUploading(null);
@@ -168,7 +174,7 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
               <input
                 id="character-upload"
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -224,7 +230,7 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
               <input
                 id="audio-upload"
                 type="file"
-                accept="audio/*"
+                accept="audio/mpeg,audio/wav,audio/mp3,audio/ogg"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];

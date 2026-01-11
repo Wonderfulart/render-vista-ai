@@ -73,11 +73,13 @@ export function FileUploader({
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: signedData, error: signedError } = await supabase.storage
         .from(bucket)
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 60 * 60 * 24 * 7); // 7-day expiry
 
-      onChange(publicUrl);
+      if (signedError) throw signedError;
+
+      onChange(signedData?.signedUrl || null);
       toast.success('File uploaded!');
     } catch (error: any) {
       console.error('Upload error:', error);
