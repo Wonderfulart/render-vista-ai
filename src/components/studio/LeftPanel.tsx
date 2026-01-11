@@ -16,7 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { AnimatedCounter } from '@/components/ui/AnimatedCounter';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Edit2, Check, X, Image, Music, Calculator } from 'lucide-react';
+import { Edit2, Check, X, Image, Music, Calculator, Scissors, Loader2 } from 'lucide-react';
 
 interface LeftPanelProps {
   project: VideoProject;
@@ -28,6 +28,7 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [title, setTitle] = useState(project.title);
   const [uploading, setUploading] = useState<'character' | 'audio' | null>(null);
+  const [isSplitting, setIsSplitting] = useState(false);
 
   useEffect(() => {
     setTitle(project.title);
@@ -72,6 +73,36 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
   const handleTemplateChange = async (templateId: string) => {
     await onUpdateProject({ shot_template_id: templateId });
     toast.success('Shot template applied');
+  };
+
+  const handleSplitAudio = async () => {
+    if (!project.master_audio_url) {
+      toast.error('Please upload audio first');
+      return;
+    }
+
+    setIsSplitting(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please sign in to split audio');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('audio-splitter', {
+        body: { project_id: project.id },
+      });
+
+      if (error) throw error;
+
+      toast.success(`Audio split into ${data?.scenes_created || 20} scenes!`);
+    } catch (err: any) {
+      console.error('Audio split error:', err);
+      toast.error(err.message || 'Failed to split audio');
+    } finally {
+      setIsSplitting(false);
+    }
   };
 
   const estimatedCost = project.total_cost || 0;
@@ -161,16 +192,32 @@ export const LeftPanel = ({ project, templates, onUpdateProject }: LeftPanelProp
             Master Audio (2 min)
           </Label>
           {project.master_audio_url ? (
-            <div className="p-3 bg-secondary rounded-lg">
+            <div className="p-3 bg-secondary rounded-lg space-y-2">
               <audio controls className="w-full h-8" src={project.master_audio_url} />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-2 w-full"
-                onClick={() => document.getElementById('audio-upload')?.click()}
-              >
-                Replace Audio
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => document.getElementById('audio-upload')?.click()}
+                >
+                  Replace
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="flex-1"
+                  onClick={handleSplitAudio}
+                  disabled={isSplitting}
+                >
+                  {isSplitting ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Scissors className="mr-1 h-3 w-3" />
+                  )}
+                  Split
+                </Button>
+              </div>
               <input
                 id="audio-upload"
                 type="file"
