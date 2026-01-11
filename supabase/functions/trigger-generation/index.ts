@@ -44,7 +44,8 @@ serve(async (req) => {
       });
     }
 
-    const { sceneId } = await req.json();
+    const body = await req.json();
+    const sceneId = body.sceneId || body.scene_id;
 
     if (!sceneId) {
       return new Response(JSON.stringify({ error: "Scene ID required" }), {

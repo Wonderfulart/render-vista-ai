@@ -42,7 +42,10 @@ serve(async (req) => {
       });
     }
 
-    const { sceneId, scriptText, characterImageUrl } = await req.json();
+    const body = await req.json();
+    const sceneId = body.sceneId || body.scene_id;
+    const scriptText = body.scriptText || body.script_text;
+    const characterImageUrl = body.characterImageUrl || body.character_image_url;
 
     if (!sceneId || !scriptText) {
       return new Response(JSON.stringify({ error: "Scene ID and script text required" }), {
