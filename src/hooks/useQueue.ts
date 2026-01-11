@@ -24,7 +24,7 @@ export const useQueue = (projectId?: string) => {
         .from('generation_queue')
         .select('*')
         .eq('user_id', user.id)
-        .in('status', ['pending', 'processing'])
+        .in('status', ['queued', 'processing'])
         .order('priority', { ascending: false })
         .order('created_at', { ascending: true });
 
@@ -40,7 +40,7 @@ export const useQueue = (projectId?: string) => {
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
-  const pendingCount = queueItems?.filter(q => q.status === 'pending').length || 0;
+  const pendingCount = queueItems?.filter(q => q.status === 'queued').length || 0;
   const processingCount = queueItems?.filter(q => q.status === 'processing').length || 0;
   const totalInQueue = pendingCount + processingCount;
 
