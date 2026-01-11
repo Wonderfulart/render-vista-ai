@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,6 +22,11 @@ export const AISuggestionsPopover = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  // Reset suggestions when scene changes (e.g., after audio split recreates scenes)
+  useEffect(() => {
+    setSuggestions([]);
+  }, [scene.id]);
 
   const handleFetchSuggestions = async () => {
     if (suggestions.length > 0) return; // Already fetched
