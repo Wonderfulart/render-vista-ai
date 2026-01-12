@@ -31,11 +31,11 @@ export function useRealtimeScenes(projectId: string | undefined) {
 
             if (newStatus !== oldStatus) {
               if (newStatus === 'completed') {
-                toast.success(`Scene ${sceneIndex + 1} completed!`);
+                toast.success(`Scene ${sceneIndex} completed!`);
               } else if (newStatus === 'failed') {
-                toast.error(`Scene ${sceneIndex + 1} failed. Check details for info.`);
+                toast.error(`Scene ${sceneIndex} failed. Check details for info.`);
               } else if (newStatus === 'processing') {
-                toast.info(`Scene ${sceneIndex + 1} is now processing...`);
+                toast.info(`Scene ${sceneIndex} is now processing...`);
               }
             }
           }

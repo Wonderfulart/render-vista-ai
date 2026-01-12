@@ -62,10 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Safety timeout - ensure loading stops even if auth fails
     const timeout = setTimeout(() => {
       if (mounted && loading) {
-        console.warn('Auth check timed out after 5s, proceeding without authentication');
+        console.warn('Auth check timed out after 10s, proceeding without authentication');
         setLoading(false);
       }
-    }, 5000);
+    }, 10000);
 
     // Set up auth state listener BEFORE checking session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
