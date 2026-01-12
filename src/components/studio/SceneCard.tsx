@@ -117,6 +117,45 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
       }
     };
 
+    const handleRegenerate = async () => {
+      if (!scriptText.trim()) {
+        toast.error('Please add a script before regenerating');
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Regenerate this scene? This will cost $${GENERATION_COST.toFixed(2)} in credits.`
+      );
+
+      if (!confirmed) return;
+
+      setIsGenerating(true);
+      
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          toast.error('Please sign in to regenerate');
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke('trigger-generation', {
+          body: { 
+            scene_id: scene.id,
+            force_regenerate: true,
+          },
+        });
+
+        if (error) throw error;
+
+        toast.success(`Regeneration started! Cost: $${GENERATION_COST.toFixed(2)}`);
+      } catch (err: any) {
+        console.error('Regeneration error:', err);
+        toast.error(err.message || 'Failed to start regeneration');
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+
     const handleGenerateThumbnail = async () => {
       if (!scriptText.trim()) {
         toast.error('Please add a script before generating thumbnail');
@@ -292,15 +331,31 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
                       </Button>
 
                       {scene.status === 'completed' ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setShowPreview(true)}
-                        >
-                          <Play className="mr-1 h-3 w-3" />
-                          Preview
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => setShowPreview(true)}
+                          >
+                            <Play className="mr-1 h-3 w-3" />
+                            Preview
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={handleRegenerate}
+                            disabled={isGenerating}
+                          >
+                            {isGenerating ? (
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-1 h-3 w-3" />
+                            )}
+                            Regenerate
+                          </Button>
+                        </>
                       ) : scene.status === 'failed' ? (
                         <Button
                           variant="outline"
@@ -321,12 +376,12 @@ export const SceneCard = forwardRef<SceneCardRef, SceneCardProps>(
                           size="sm"
                           className="flex-1 bg-rainbow-pastel text-foreground hover:opacity-90"
                           onClick={handleGenerate}
-                          disabled={scene.status === 'processing' || isGenerating}
+                          disabled={scene.status === 'processing' || scene.status === 'queued' || isGenerating}
                         >
-                          {scene.status === 'processing' || isGenerating ? (
+                          {scene.status === 'processing' || scene.status === 'queued' || isGenerating ? (
                             <>
                               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                              Generating...
+                              {scene.status === 'queued' ? 'Queued...' : 'Generating...'}
                             </>
                           ) : (
                             <>

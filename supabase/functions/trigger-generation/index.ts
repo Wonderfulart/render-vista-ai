@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const GENERATION_COST = 0.98;
+const MAX_RETRIES = 3;
 
 // Normalize parameters to support both camelCase and snake_case
 function normalizeParams<T extends Record<string, unknown>>(body: T): T {
@@ -19,6 +20,7 @@ function normalizeParams<T extends Record<string, unknown>>(body: T): T {
     'characterImageUrl': 'character_image_url',
     'projectContext': 'project_context',
     'audioClipUrl': 'audio_clip_url',
+    'forceRegenerate': 'force_regenerate',
   };
   
   for (const [camel, snake] of Object.entries(mappings)) {
@@ -50,7 +52,11 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (!makeWebhookUrl) {
-      return new Response(JSON.stringify({ error: "Generation service not configured" }), {
+      console.error("CRITICAL: MAKE_WEBHOOK_URL not configured in Supabase secrets");
+      return new Response(JSON.stringify({ 
+        error: "Generation service not configured. Please contact support.",
+        details: "MAKE_WEBHOOK_URL environment variable is missing"
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -68,6 +74,7 @@ serve(async (req) => {
 
     const body = normalizeParams(await req.json());
     const sceneId = body.scene_id;
+    const forceRegenerate = body.force_regenerate || false;
 
     if (!sceneId) {
       return new Response(JSON.stringify({ error: "Scene ID required" }), {
@@ -105,13 +112,44 @@ serve(async (req) => {
       });
     }
 
+    // Check if regeneration (already completed) or new generation
+    const isRegeneration = scene.status === 'completed' && forceRegenerate;
+
+    // Prevent duplicate processing
+    if (scene.status === 'processing' || scene.status === 'queued') {
+      return new Response(JSON.stringify({ 
+        error: "Scene is already being processed",
+        status: scene.status 
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check retry limit for failed scenes
+    if (scene.status === 'failed' && scene.retry_count >= MAX_RETRIES) {
+      return new Response(JSON.stringify({ 
+        error: `Maximum retries (${MAX_RETRIES}) reached. Please contact support.`,
+        retry_count: scene.retry_count
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Atomic credit deduction using RPC
+    const creditDescription = isRegeneration 
+      ? `Scene ${scene.scene_index} regeneration`
+      : scene.status === 'failed'
+      ? `Scene ${scene.scene_index} retry ${scene.retry_count + 1}`
+      : `Scene ${scene.scene_index} generation`;
+
     const { data: creditResult, error: creditError } = await supabase
       .rpc('deduct_credits', {
         p_user_id: user.id,
         p_amount: GENERATION_COST,
-        p_type: 'generation',
-        p_description: `Scene ${scene.scene_index} generation`,
+        p_type: isRegeneration ? 'regeneration' : 'generation',
+        p_description: creditDescription,
         p_reference_id: sceneId,
       });
 
@@ -138,21 +176,7 @@ serve(async (req) => {
 
     const newBalance = result.new_balance;
 
-    // Update scene status to queued
-    const { error: updateError } = await supabase
-      .from("video_scenes")
-      .update({ 
-        status: "queued",
-        generation_cost: GENERATION_COST,
-        processing_started_at: new Date().toISOString(),
-      })
-      .eq("id", sceneId);
-
-    if (updateError) {
-      console.error("Scene update error:", updateError);
-    }
-
-    // Add to generation queue
+    // Add to generation queue FIRST
     const { error: queueError } = await supabase
       .from("generation_queue")
       .insert({
@@ -165,6 +189,34 @@ serve(async (req) => {
 
     if (queueError) {
       console.error("Queue insert error:", queueError);
+      // Refund credits if queue fails
+      await supabase.rpc('add_credits', {
+        p_user_id: user.id,
+        p_amount: GENERATION_COST,
+        p_type: 'refund',
+        p_description: `Refund for failed queue: ${creditDescription}`,
+        p_reference_id: sceneId,
+      });
+      return new Response(JSON.stringify({ error: "Failed to queue generation" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Update scene status to queued
+    const { error: updateError } = await supabase
+      .from("video_scenes")
+      .update({ 
+        status: "queued",
+        generation_cost: GENERATION_COST,
+        processing_started_at: new Date().toISOString(),
+        error_message: null, // Clear previous errors
+        retry_count: scene.status === 'failed' ? scene.retry_count + 1 : scene.retry_count,
+      })
+      .eq("id", sceneId);
+
+    if (updateError) {
+      console.error("Scene update error:", updateError);
     }
 
     // Send to Make.com webhook
@@ -174,43 +226,99 @@ serve(async (req) => {
       projectId: scene.project_id,
       sceneIndex: scene.scene_index,
       scriptText: scene.script_text,
-      cameraMovement: scene.camera_movement,
-      cameraTier: scene.camera_tier,
+      cameraMovement: scene.camera_movement || 'static',
+      cameraTier: scene.camera_tier || 'standard',
       audioClipUrl: scene.audio_clip_url,
-      characterImageUrl: project.master_character_url,
+      characterImageUrl: project?.master_character_url,
+      isRegeneration,
+      retryCount: scene.retry_count,
       callbackUrl: `${supabaseUrl}/functions/v1/update-scene`,
     };
 
-    const webhookResponse = await fetch(makeWebhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(webhookPayload),
-    });
+    console.log("Sending to Make.com:", makeWebhookUrl);
+    console.log("Payload:", JSON.stringify(webhookPayload, null, 2));
 
-    if (!webhookResponse.ok) {
-      console.error("Webhook error:", await webhookResponse.text());
+    let webhookResponse;
+    try {
+      webhookResponse = await fetch(makeWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webhookPayload),
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+    } catch (fetchError) {
+      console.error("Webhook fetch error:", fetchError);
       
-      // Refund credits on webhook failure using atomic add
+      // Refund credits on webhook failure
       await supabase.rpc('add_credits', {
         p_user_id: user.id,
         p_amount: GENERATION_COST,
         p_type: 'refund',
-        p_description: `Refund for failed scene ${scene.scene_index} queue`,
+        p_description: `Refund: Webhook timeout - ${creditDescription}`,
         p_reference_id: sceneId,
       });
 
       await supabase
         .from("video_scenes")
-        .update({ status: "failed", error_message: "Failed to queue generation" })
+        .update({ 
+          status: "failed", 
+          error_message: "Generation service timeout. Please try again." 
+        })
         .eq("id", sceneId);
 
-      return new Response(JSON.stringify({ error: "Failed to queue generation" }), {
+      await supabase
+        .from("generation_queue")
+        .update({ status: "failed" })
+        .eq("scene_id", sceneId);
+
+      return new Response(JSON.stringify({ 
+        error: "Generation service timeout",
+        details: fetchError instanceof Error ? fetchError.message : "Unknown error"
+      }), {
+        status: 504,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!webhookResponse.ok) {
+      const errorText = await webhookResponse.text();
+      console.error("Webhook error:", webhookResponse.status, errorText);
+      
+      // Refund credits on webhook failure
+      await supabase.rpc('add_credits', {
+        p_user_id: user.id,
+        p_amount: GENERATION_COST,
+        p_type: 'refund',
+        p_description: `Refund: Webhook failed - ${creditDescription}`,
+        p_reference_id: sceneId,
+      });
+
+      await supabase
+        .from("video_scenes")
+        .update({ 
+          status: "failed", 
+          error_message: "Failed to queue generation. Please try again." 
+        })
+        .eq("id", sceneId);
+
+      await supabase
+        .from("generation_queue")
+        .update({ status: "failed" })
+        .eq("scene_id", sceneId);
+
+      return new Response(JSON.stringify({ 
+        error: "Failed to queue generation",
+        details: errorText 
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Update scene to processing
+    // Successfully sent to Make.com
+    console.log("Webhook sent successfully to Make.com");
+
+    // Update scene to processing ONLY after webhook confirms
     await supabase
       .from("video_scenes")
       .update({ status: "processing" })
@@ -224,9 +332,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Generation started",
+        message: isRegeneration ? "Regeneration started" : "Generation started",
         cost: GENERATION_COST,
         newBalance,
+        isRegeneration,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
