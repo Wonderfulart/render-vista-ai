@@ -106,8 +106,8 @@ serve(async (req) => {
       })
       .eq("scene_id", sceneId);
 
-    // Handle failure - refund credits if permanent failure using atomic RPC
-    if (status === "failed" && scene.retry_count >= 2) {
+    // Handle failure - refund credits if permanent failure (after MAX_RETRIES = 3)
+    if (status === "failed" && scene.retry_count >= 3) {
       const refundAmount = scene.generation_cost || 0.98;
       
       const { error: refundError } = await supabase.rpc('add_credits', {

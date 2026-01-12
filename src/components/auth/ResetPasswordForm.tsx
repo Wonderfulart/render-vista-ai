@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,58 @@ export const ResetPasswordForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    let mounted = true;
+
+    // Listen for PASSWORD_RECOVERY event specifically
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        setSessionReady(true);
+        setCheckingSession(false);
+      } else if (event === 'SIGNED_IN' && session) {
+        // Also handle SIGNED_IN in case the recovery was already processed
+        setSessionReady(true);
+        setCheckingSession(false);
+      }
+    });
+
+    // Check if session already exists (in case event was missed)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      
+      if (session) {
+        setSessionReady(true);
+      }
+      setCheckingSession(false);
+    });
+
+    // Timeout after 5 seconds if no session found
+    const timeout = setTimeout(() => {
+      if (!mounted) return;
+      
+      if (!sessionReady) {
+        toast({
+          variant: 'destructive',
+          title: 'Session Expired',
+          description: 'Please request a new password reset link.',
+        });
+        navigate('/forgot-password');
+      }
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [navigate, toast, sessionReady]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +109,26 @@ export const ResetPasswordForm = () => {
 
     navigate('/login');
   };
+
+  // Show loading state while checking for recovery session
+  if (checkingSession) {
+    return (
+      <div className="flex flex-col items-center justify-center space-y-4 py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Verifying reset link...</p>
+      </div>
+    );
+  }
+
+  // If session check completed but no session, the timeout will redirect
+  if (!sessionReady) {
+    return (
+      <div className="flex flex-col items-center justify-center space-y-4 py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Preparing password reset...</p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
